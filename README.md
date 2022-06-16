@@ -7,7 +7,7 @@ CMake, C++ 17, driver with OpenCL support.
 ### Building
 ```
 This project uses submodules. 
-gitclone https://github.com/takskazatsootvetstvenno/opencl_alg --recurse-submodules
+git clone https://github.com/takskazatsootvetstvenno/opencl_alg --recurse-submodules
 After that use cmake to build the project.
 ```
 ### Used materials/libs
