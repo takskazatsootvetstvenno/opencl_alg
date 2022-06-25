@@ -11,10 +11,13 @@ namespace ALG
 		CLApp(int local_x, int local_y);
 		cl::Event vec_add(cl_int const* APtr, cl_int const* BPtr, cl_int* CPtr, size_t vec_size) noexcept;
 		cl::Event mat_mult(const float* APtr, const float* BPtr, float* CPtr, int AX, int AY, int BY) noexcept;
+		cl::Event mat_transpose(const float* APtr, float* ATPtr, int AX, int AY) noexcept;
+		bool isValid() const noexcept { return m_isValid; };
 		static constexpr int LOCAL_SIZE = 1;
 
 		using vecAdd_t = cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer>;
 		using matMult_t = cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer, int, int, int>;
+		using matTraspose_t = cl::KernelFunctor<cl::Buffer, cl::Buffer, int, int>;
 	private:
 		cl::Platform get_platform() noexcept;
 		cl::Context get_context(cl_platform_id p_id) noexcept;

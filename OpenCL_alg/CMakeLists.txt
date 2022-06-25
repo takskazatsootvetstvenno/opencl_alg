@@ -4,6 +4,7 @@ set(ALG_PROJECT_NAME OpenCL_ALG)
                   
 set(ALG_INCLUDES
 	includes/CLAPP.hpp
+	includes/cpu_helper_functions.hpp
 )
 
 set(ALG_SOURCES

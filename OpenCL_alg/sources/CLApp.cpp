@@ -1,6 +1,7 @@
 #include "CLApp.hpp"
 #include <iostream>
 #include <chrono>
+#include <cassert>
 
 const char* vecAddKernelSRC = R"(
 
@@ -10,6 +11,7 @@ __kernel void vector_add(__global int* A, __global int* B, __global int* C) {
 }
 
 )";
+
 const char* matMultKernelSRC = R"(
 
 #define TYPE float
@@ -26,9 +28,23 @@ __kernel void matrix_multiply(__global TYPE* A, __global TYPE* B, __global TYPE*
 
 )";
 
+const char* matTransposeKernelSRC = R"(
+
+#define TYPE float
+__kernel void matrix_transpose(__global TYPE* A, __global TYPE* AT, int AX, int AY) {
+	int i = get_global_id(0); //¹ of row      (0..AX)
+	int j = get_global_id(1); //¹ of column   (0..AY)
+							  
+	TYPE x = A[i * AY + j];
+	AT[j * AX + i] = x;
+
+}
+
+)";
+
 namespace ALG
 {
-	cl::QueueProperties getQueueProp() noexcept
+	const cl::QueueProperties getQueueProp() noexcept
 	{
 		return cl::QueueProperties::Profiling | cl::QueueProperties::OutOfOrder;
 	}
@@ -64,7 +80,7 @@ namespace ALG
 		cl::Program program(m_context, vecAddKernelSRC);
 		cl_int buildErr = program.build();
 		if (buildErr != CL_SUCCESS) {
-			std::cerr << "Kernel building error: " << buildErr << "\n";
+			std::cerr << "vec_add kernel building error: " << buildErr << "\n";
 			m_isValid = false;
 		}
 		vecAdd_t add_vecs(program, "vector_add");
@@ -74,17 +90,17 @@ namespace ALG
 		cl::EnqueueArgs Args(m_queue, GlobalRange, LocalRange);
 		
 		cl::Event evt = add_vecs(Args, A, B, C);
-		auto time_start = evt.getProfilingInfo<CL_PROFILING_COMMAND_START>();
 
 		evt.wait();
 		cl::copy(m_queue, C, CPtr, CPtr + vec_size);
-		auto time_end = evt.getProfilingInfo<CL_PROFILING_COMMAND_END>();
-		std::cout << "Time on GPU side: " << time_end - time_start << std::endl;
 		return evt;
 	}
 
 	cl::Event CLApp::mat_mult(const float* APtr, const float* BPtr, float* CPtr,
 		int AX, int AY, int BY) noexcept{
+		assert(APtr != nullptr && BPtr != nullptr && CPtr != nullptr);
+		assert(AX > 0 && AY > 0 && BY > 0);
+
 		size_t ASz = AX * AY, ABufSz = ASz * sizeof(float);
 		size_t BSz = AY * BY, BBufSz = BSz * sizeof(float);
 		size_t CSz = AX * BY, CBufSz = CSz * sizeof(float);
@@ -99,7 +115,7 @@ namespace ALG
 		cl::Program program(m_context, matMultKernelSRC);
 		cl_int buildErr = program.build();
 		if (buildErr != CL_SUCCESS) {
-			std::cerr << "Kernel building error: " << buildErr << "\n";
+			std::cerr << "mat_mult kernel building error: " << buildErr << "\n";
 			m_isValid = false;
 		}
 
@@ -114,6 +130,36 @@ namespace ALG
 
 		cl::copy(m_queue, C, CPtr, CPtr + CSz);
 		return Evt;
+	}
+
+	cl::Event CLApp::mat_transpose(const float* APtr, float* ATPtr, int AX, int AY) noexcept
+	{
+		assert(APtr != nullptr && ATPtr != nullptr);
+		assert(AX > 0 && AY > 0);
+		size_t Sz = AX * AY; size_t bufSz = Sz * sizeof(float);
+
+		cl::Buffer A(m_context, CL_MEM_READ_ONLY, bufSz);
+		cl::Buffer AT(m_context, CL_MEM_WRITE_ONLY, bufSz);
+
+		cl::copy(m_queue, APtr, APtr + Sz, A);
+
+		cl::Program program(m_context, matTransposeKernelSRC);
+		cl_int buildErr = program.build();
+		if (buildErr != CL_SUCCESS) {
+			std::cerr << "mat_transpose kernel building error: " << buildErr << "\n";
+			assert(false);
+			m_isValid = false;
+		}
+		matTraspose_t mat_transpose(program, "matrix_transpose");
+
+		cl::NDRange GlobalRange(AX, AY);
+		cl::NDRange LocalRange(1, 1);
+		cl::EnqueueArgs Args(m_queue, GlobalRange, LocalRange);
+
+		cl::Event evt = mat_transpose(Args, A, AT, AX, AY);
+		evt.wait();
+		cl::copy(m_queue, AT, ATPtr, ATPtr + Sz);
+		return evt;
 	}
 
 	cl::Platform CLApp::get_platform() noexcept

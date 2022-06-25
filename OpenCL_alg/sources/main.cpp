@@ -7,57 +7,7 @@
 #include <random>
 #include <iomanip>
 #include "CLApp.hpp"
-
-template <typename It>
- void rand_init(It start, It end, float low, float up) {
-    static std::mt19937_64 mt_source;
-    std::uniform_int_distribution<int> dist(low, up);
-    for (It cur = start; cur != end; ++cur)
-        *cur = dist(mt_source);
-}
-
- template <typename T>
- void outm(const T* M, int MX, int MY) {
-     for (int i = 0; i < MX; ++i) {
-         for (int j = 0; j < MY; ++j)
-             std::cout << std::setw(3) << M[i * MY + j] << " ";
-         std::cout << std::endl;
-     }
- }
-
- template<typename T>
- void multiply_CPU_simple(const T* A, const T* B, T* C, const size_t Ax, const size_t Ay, const size_t By) noexcept
- {
-     size_t i, j, r;
-     for(i = 0; i < Ax; ++i)
-         for (j = 0; j < By; ++j)
-         {
-             T sum = 0;
-             for (r = 0; r < Ay; ++r) 
-                 sum += A[Ay * i + r] * B[By * r + j];
-             C[By * i + j] = sum;
-         }
- }
-
- template<typename T>
- void multiply_transpose_CPU(const T* A, const T* B, T* C, const size_t Ax, const size_t Ay, const size_t By) noexcept
- {
-     std::vector<T> tmp(By * Ay);
-     size_t i, j, r;
-
-     for (i = 0; i < Ay; ++i)
-         for ( j = 0; j < By; ++j)
-             tmp[Ay * j + i] = B[By * i + j];
-
-     for (i = 0; i < Ax; ++i)
-         for (j = 0; j < By; ++j)
-         {
-             T sum = 0;
-             for (r = 0; r < Ay; ++r) 
-                 sum += A[Ay * i + r] * tmp[Ay * j + r];
-             C[By * i + j] = sum;
-         }
- }
+#include "cpu_helper_functions.hpp"
 
 int main()
 {
@@ -67,64 +17,107 @@ int main()
 
     ALG::CLApp app(1, 1);
 
-    const int k = 1100;
-    int AX = 3*k; //num of row
-    int AY = 2*k; //num of column
-    int BY = 1*k;
-    cl::vector<float> A(AX * AY), B(AY * BY), C(AX * BY), C_CPU(AX * BY), C_CPU_OPTIMIZED(AX * BY);
+    const int k = 2;
+    const int AX = 3 * k; //num of row
+    const int AY = 2 * k; //num of column
+    const int BY = 1 * k;
+    cl::vector<float> A(AX * AY), AT(AX * AY), B(AY * BY), C(AX * BY), C_CPU(AX * BY), C_CPU_OPTIMIZED(AX * BY);
+    //AX - Num of rows,
+    //AY - Num of columns
+    CPU_HELPER_FUNC::rand_init(A.begin(), A.end(), 0, 10);
+    CPU_HELPER_FUNC::rand_init(B.begin(), B.end(), 0, 10);
 
-    rand_init(A.begin(), A.end(), 0, 10);
-    rand_init(B.begin(), B.end(), 0, 10);
-   
-    std::cout << "C MAT SIZE: rows: " << AX << "  columns: " << BY <<std::endl;
+    std::cout << "C MAT SIZE: rows: " << AX << "  columns: " << BY << std::endl;
 
-    TimeStart = std::chrono::high_resolution_clock::now();
-
-    cl::Event evt = app.mat_mult(A.data(), B.data(), C.data(), AX, AY, BY);
-
-    TimeFin = std::chrono::high_resolution_clock::now();
-    Dur =
-        std::chrono::duration_cast<std::chrono::milliseconds>(TimeFin - TimeStart)
-        .count();
-    std::cout << "GPU wall time measured: " << Dur << " ms" << std::endl;
-    GPUTimeStart = evt.getProfilingInfo<CL_PROFILING_COMMAND_START>();
-    GPUTimeFin = evt.getProfilingInfo<CL_PROFILING_COMMAND_END>();
-    GDur = (GPUTimeFin - GPUTimeStart) / 1000000; // ns -> ms
-    std::cout << "GPU pure time measured: " << GDur << " ns" << std::endl;
-   
-    TimeStart = std::chrono::high_resolution_clock::now();
-    multiply_CPU_simple(A.data(), B.data(), C_CPU.data(), AX, AY, BY);
-    TimeFin = std::chrono::high_resolution_clock::now();
-    Dur =
-        std::chrono::duration_cast<std::chrono::milliseconds>(TimeFin - TimeStart)
-        .count();
-    std::cout << "CPU time measured: " << Dur << " ms" << std::endl;
-
-    TimeStart = std::chrono::high_resolution_clock::now();
-    multiply_transpose_CPU(A.data(), B.data(), C_CPU_OPTIMIZED.data(), AX, AY, BY);
-    TimeFin = std::chrono::high_resolution_clock::now();
-    Dur =
-        std::chrono::duration_cast<std::chrono::milliseconds>(TimeFin - TimeStart)
-        .count();
-    std::cout << "CPU_optimized time measured: " << Dur << " ms" << std::endl;
-    
+    {
+        std::cout << "\n-mat_mult_GPU\n";
+        TimeStart = std::chrono::high_resolution_clock::now();
+        cl::Event evt = app.mat_mult(A.data(), B.data(), C.data(), AX, AY, BY);
+        TimeFin = std::chrono::high_resolution_clock::now();
+        Dur =
+            std::chrono::duration_cast<std::chrono::milliseconds>(TimeFin - TimeStart)
+            .count();
+        std::cout << "GPU wall time measured: " << Dur << " ms" << std::endl;
+        GPUTimeStart = evt.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+        GPUTimeFin = evt.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+        GDur = (GPUTimeFin - GPUTimeStart) / 1000000; // ns -> ms
+        std::cout << "GPU pure time measured: " << GDur << " ms" << std::endl;
+    }
+    {
+        std::cout << "\n-multiply_CPU_simple\n";
+        TimeStart = std::chrono::high_resolution_clock::now();
+        CPU_HELPER_FUNC::multiply_CPU_simple(A.data(), B.data(), C_CPU.data(), AX, AY, BY);
+        TimeFin = std::chrono::high_resolution_clock::now();
+        Dur =
+            std::chrono::duration_cast<std::chrono::milliseconds>(TimeFin - TimeStart)
+            .count();
+        std::cout << "CPU time measured: " << Dur << " ms" << std::endl;
+        auto transpose_test_pass = CPU_HELPER_FUNC::compare_matrices(C_CPU.data(), C.data(), AX, BY);
+        if (transpose_test_pass)
+            std::cout << "CPU and GPU multiplication are equel\n";
+    }
+    {
+        std::cout << "\n-multiply_transpose_CPU\n";
+        TimeStart = std::chrono::high_resolution_clock::now();
+        CPU_HELPER_FUNC::multiply_transpose_CPU(A.data(), B.data(), C_CPU_OPTIMIZED.data(), AX, AY, BY);
+        TimeFin = std::chrono::high_resolution_clock::now();
+        Dur =
+            std::chrono::duration_cast<std::chrono::milliseconds>(TimeFin - TimeStart)
+            .count();
+        std::cout << "CPU_optimized time measured: " << Dur << " ms" << std::endl;
+        auto transpose_test_pass = CPU_HELPER_FUNC::compare_matrices(C_CPU_OPTIMIZED.data(), C.data(), AX, BY);
+        if (transpose_test_pass)
+            std::cout << "CPU and GPU multiplication are equel\n";
+    }
+    {
+        std::cout << "\n-mat_transpose_GPU\n";
+        TimeStart = std::chrono::high_resolution_clock::now();
+        auto evt_transpose = app.mat_transpose(A.data(), AT.data(), AX, AY);
+        TimeFin = std::chrono::high_resolution_clock::now();
+        Dur =
+            std::chrono::duration_cast<std::chrono::milliseconds>(TimeFin - TimeStart)
+            .count();
+        std::cout << "GPU transpose wall time measured: " << Dur << " ms" << std::endl;
+        GPUTimeStart = evt_transpose.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+        GPUTimeFin = evt_transpose.getProfilingInfo<CL_PROFILING_COMMAND_END>();
+        GDur = (GPUTimeFin - GPUTimeStart) / 1000000; // ns -> ms
+        std::cout << "GPU transpose pure time measured: " << GDur << " ms" << std::endl;
+    }
+    {
+        std::cout << "\n-transpose_CPU\n";
+        cl::vector<float> AT_CPU(AX * AY);
+        TimeStart = std::chrono::high_resolution_clock::now();
+        CPU_HELPER_FUNC::transpose_CPU(A.data(), AT_CPU.data(),AX, AY);
+        TimeFin = std::chrono::high_resolution_clock::now();
+        Dur =
+            std::chrono::duration_cast<std::chrono::milliseconds>(TimeFin - TimeStart)
+            .count();
+        std::cout << "CPU time measured: " << Dur << " ms" << std::endl;
+        auto transpose_test_pass = CPU_HELPER_FUNC::compare_matrices(AT.data(), AT_CPU.data(), AX, AY);
+        if (transpose_test_pass)
+            std::cout << "CPU and GPU transpose are equel\n";
+    }
     if (AX * BY < 50)
     {
         std::cout << "--- Matrix A---\n";
-        outm(A.data(), AX, AY);
+        CPU_HELPER_FUNC::print_matrix(A.data(), AX, AY);
         std::cout << "--- Matrix B---\n";
-        outm(B.data(), AY, BY);
-        std::cout << "--- Matrix C GPU---\n";
-        outm(C.data(), AX, BY);
-        std::cout << "--- Matrix C CPU---\n";
-        outm(C_CPU.data(), AX, BY);
-        std::cout << "--- Matrix C CPU OPTIMIZED---\n";
-        outm(C_CPU_OPTIMIZED.data(), AX, BY);
+        CPU_HELPER_FUNC::print_matrix(B.data(), AY, BY);
+        std::cout << "--- Matrix C mult GPU---\n";
+        CPU_HELPER_FUNC::print_matrix(C.data(), AX, BY);
+        /*std::cout << "--- Matrix C mult CPU---\n";
+        CPU_HELPER_FUNC::print_matrix(C_CPU.data(), AX, BY);
+        std::cout << "--- Matrix C mult CPU OPTIMIZED---\n";
+        CPU_HELPER_FUNC::print_matrix(C_CPU_OPTIMIZED.data(), AX, BY);
+        */
+        std::cout << "--- Matrix AT traspose GPU---\n";
+        CPU_HELPER_FUNC::print_matrix(AT.data(), AY, AX);
         std::cout << "--- End Matrices---\n";
     }
-
-
-    std::cout << "Success!";
+    if (app.isValid())
+        std::cout << "Success!";
+    else
+        std::cout << "smth wrong!";
     std::getchar();
     return 0;
 }
